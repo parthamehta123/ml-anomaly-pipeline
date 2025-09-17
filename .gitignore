@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+*.log
+*.sqlite3
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.ipynb_checkpoints/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Kubernetes
+*.yaml~       # temporary edits
+*.bak
+kubeconfig
+
+# AWS / Cloud
+*.pem
+*.key
+*.crt
+*.csr
+*.der
+
+# MLflow / Artifacts
+mlruns/
+models/
+artifacts/
+*.pkl
+*.h5
+
+# Prometheus / Grafana runtime data
+prometheus_data/
+grafana_data/
+
+# Logs / temp data
+logs/
+*.out
+*.err
+*.tmp
+*.temp
+*.pid
+*.csv
+*.tsv
+
+# Build / Docker
+dist/
+build/
+*.tar.gz
+*.whl
+*.img
+.dockerignore
+
+# Node (if any dashboards/scripts use npm)
+node_modules/
+
+# Coverage / Testing
+.coverage
+htmlcov/
+.pytest_cache/
+junit.xml
+.cache/

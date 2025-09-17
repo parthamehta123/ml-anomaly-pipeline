@@ -1,0 +1,1 @@
+{ "title":"Anomaly Detection Demo","panels":[{"type":"graph","title":"CPU","targets":[{"expr":"node_cpu_usage"}]}]}

@@ -1,0 +1,16 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kill-anomaly-api
+  namespace: anomaly-api
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - anomaly-api
+    labelSelectors:
+      app: anomaly-api
+  duration: "60s"
+  scheduler:
+    cron: "@every 5m"
