@@ -1,0 +1,21 @@
+backendStore:
+  databaseURI: postgresql://mlflow:mlflowpass@mlflow-db:5432/mlflow
+
+defaultArtifactRoot: s3://ml-anomaly-bucket/mlflow/
+
+service:
+  type: ClusterIP
+  port: 5000
+
+image:
+  repository: ghcr.io/mlflow/mlflow
+  tag: 2.11.3
+
+ingress:
+  enabled: true
+  className: alb
+  hosts:
+    - host: mlflow.example.com
+      paths:
+        - path: /
+          pathType: Prefix
