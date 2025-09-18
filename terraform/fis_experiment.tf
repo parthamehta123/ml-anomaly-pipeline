@@ -1,17 +1,14 @@
 resource "aws_iam_role" "fis_role" {
-  name = "fis-experiment-role"
-
+  name = "fis-experiment-role-${var.env}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "fis.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "fis.amazonaws.com"
       }
-    ]
+      Action = "sts:AssumeRole"
+    }]
   })
 }
 
