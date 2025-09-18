@@ -16,7 +16,7 @@ terraform {
 }
 
 provider "aws" {
-  region = var.region
+  region = "us-east-1"
 }
 
 # Configure Kubernetes provider (uses your local kubeconfig)
