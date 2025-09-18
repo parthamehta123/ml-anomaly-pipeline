@@ -21,3 +21,14 @@ variable "env" {
   type        = string
   default     = "dev"
 }
+
+variable "ghcr_username" {
+  type        = string
+  description = "GitHub username for GHCR authentication"
+}
+
+variable "ghcr_token" {
+  type        = string
+  description = "GitHub personal access token with read:packages"
+  sensitive   = true
+}

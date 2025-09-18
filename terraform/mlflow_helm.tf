@@ -5,7 +5,6 @@ resource "helm_release" "mlflow" {
   chart            = "mlflow"
   version          = "1.6.2"
   create_namespace = true
-  timeout          = 600
   wait             = true
 
   values = [
@@ -31,7 +30,9 @@ resource "helm_release" "mlflow" {
 
       image:
         repository: ghcr.io/mlflow/mlflow
-        tag: 1.6.2  # or whatever image tag matches chart expectations
+        tag: v2.0.1
+        pullSecrets:
+          - name: ghcr-secret
 
       ingress:
         enabled: true
@@ -46,6 +47,7 @@ resource "helm_release" "mlflow" {
 
   depends_on = [
     module.eks,
-    aws_s3_bucket.ml_bucket
+    aws_s3_bucket.ml_bucket,
+    kubernetes_secret.ghcr
   ]
 }
