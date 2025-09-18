@@ -6,24 +6,17 @@ terraform {
     }
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 3.0"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.30"
+      version = ">= 2.10.0"
     }
   }
 }
 
+# ----------------------------
+# AWS Provider
+# ----------------------------
 provider "aws" {
   region = var.region
 }
-
-provider "kubernetes" {
-  config_path = "~/.kube/config"
-}
-
-provider "helm" {}
 
 # ----------------------------
 # VPC Module
@@ -49,11 +42,22 @@ module "vpc" {
 }
 
 # ----------------------------
+# Fetch your current public IP
+# ----------------------------
+data "http" "my_ip" {
+  url = "https://checkip.amazonaws.com/"
+}
+
+locals {
+  my_cidr = "${chomp(data.http.my_ip.response_body)}/32"
+}
+
+# ----------------------------
 # EKS Module
 # ----------------------------
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "20.37.2"
+  version = "~> 20.0"
 
   cluster_name    = var.eks_cluster_name
   cluster_version = "1.29"
@@ -61,12 +65,18 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
+  cluster_endpoint_public_access       = true
+  cluster_endpoint_private_access      = true
+  cluster_endpoint_public_access_cidrs = [local.my_cidr]
+
+  enable_irsa = true
+
   eks_managed_node_groups = {
     default = {
+      instance_types = ["t3.medium"]
       desired_size   = 2
       min_size       = 1
       max_size       = 3
-      instance_types = ["t3.medium"]
 
       labels = {
         role = "worker"
@@ -77,6 +87,38 @@ module "eks" {
   tags = {
     Project     = "ml-anomaly-pipeline"
     Environment = "dev"
+  }
+}
+
+# ----------------------------
+# Data sources for Helm provider
+# ----------------------------
+data "aws_eks_cluster" "this" {
+  name = module.eks.cluster_name
+}
+
+data "aws_eks_cluster_auth" "this" {
+  name = module.eks.cluster_name
+}
+
+# ----------------------------
+# Kubernetes Provider (aliased as eks)
+# ----------------------------
+provider "kubernetes" {
+  alias                  = "eks"
+  host                   = data.aws_eks_cluster.this.endpoint
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
+  token                  = data.aws_eks_cluster_auth.this.token
+}
+
+# ----------------------------
+# Helm Provider (wired to EKS)
+# ----------------------------
+provider "helm" {
+  kubernetes = {
+    host                   = data.aws_eks_cluster.this.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
+    token                  = data.aws_eks_cluster_auth.this.token
   }
 }
 
