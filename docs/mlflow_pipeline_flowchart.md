@@ -1,0 +1,26 @@
+# MLflow Anomaly Pipeline Flow
+
+This diagram shows the end-to-end CI/CD + MLOps pipeline.
+
+
+```mermaid
+flowchart LR
+    mirror[🔄 Mirror MLflow<br/>(DockerHub → ECR)]
+    notify[📢 Notify Slack/Teams<br/>+ Terraform instructions]
+    bump[🤖 Bump Workflow<br/>(Update terraform.tfvars,<br/>Open PR)]
+    plan[📝 Terraform Plan<br/>(Comment on PR)]
+    apply[🚀 Terraform Apply<br/>(on merge to main)]
+    success((✅ Success<br/>Slack + Teams Notify))
+    fail((❌ Failure<br/>Slack + Teams Alert))
+    rollback[🔄 Auto-Rollback PR<br/>+ Auto-Merge]
+    rollback_notify((📢 Rollback Success<br/>Slack + Teams Notify))
+
+    mirror --> notify
+    mirror --> bump
+    bump --> plan
+    plan --> apply
+    apply -->|success| success
+    apply -->|failure| fail
+    fail --> rollback
+    rollback --> rollback_notify
+```
