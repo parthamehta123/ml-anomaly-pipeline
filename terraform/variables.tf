@@ -36,5 +36,11 @@ variable "ghcr_token" {
 variable "mlflow_version" {
   description = "MLflow version to deploy"
   type        = string
-  default     = "2.0.1" # can override in tfvars or CLI
+  default     = "2.0.1"
 }
+
+variable "ecr_repo_uri" {
+  description = "ECR repository URI (e.g., <account_id>.dkr.ecr.us-east-1.amazonaws.com)"
+  type        = string
+}
+

@@ -1,10 +1,24 @@
 version: 0.2
+
+env:
+  variables:
+    ECR_URI: "413117505590.dkr.ecr.us-east-1.amazonaws.com/mlflow"
+    MLFLOW_VERSION: "2.0.1"
+
 phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws --version
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_URI
+      - echo "Pulling MLflow image from DockerHub..."
+      - docker pull ghcr.io/mlflow/mlflow:v$MLFLOW_VERSION
   build:
     commands:
-      - echo Logging in to ECR...
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
-      - echo Pulling MLflow image...
-      - docker pull mlflow/mlflow:2.0.1
-      - docker tag mlflow/mlflow:2.0.1 $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/mlflow:2.0.1
-      - docker push $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/mlflow:2.0.1
+      - echo "Tagging MLflow image for ECR..."
+      - docker tag ghcr.io/mlflow/mlflow:v$MLFLOW_VERSION $ECR_URI:$MLFLOW_VERSION
+      - echo "Pushing MLflow image to ECR..."
+      - docker push $ECR_URI:$MLFLOW_VERSION
+  post_build:
+    commands:
+      - echo "✅ MLflow image v$MLFLOW_VERSION successfully mirrored to $ECR_URI"

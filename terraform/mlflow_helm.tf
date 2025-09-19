@@ -29,10 +29,8 @@ resource "helm_release" "mlflow" {
         port: 5000
 
       image:
-        repository: ${aws_ecr_repository.mlflow.repository_url}
-        tag: "${var.mlflow_version}"    # ✅ explicit version, not latest
-        pullPolicy: IfNotPresent        # safer, avoids unnecessary redeploys
-
+        repository: ${var.ecr_repo_uri}/mlflow
+        tag: ${var.mlflow_version}
 
       ingress:
         enabled: true
@@ -47,7 +45,6 @@ resource "helm_release" "mlflow" {
 
   depends_on = [
     module.eks,
-    aws_s3_bucket.ml_bucket,
-    aws_ecr_repository.mlflow
+    aws_s3_bucket.ml_bucket
   ]
 }
