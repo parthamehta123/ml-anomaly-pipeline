@@ -1,0 +1,191 @@
+name: Auto-bump MLflow version in Terraform
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [bump-mlflow-version]
+  push:
+    branches:
+      - main   # auto-apply when PR merged
+
+jobs:
+  bump:
+    if: github.event_name == 'repository_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update mlflow_version variable
+        run: |
+          echo "Bumping MLflow version to ${{ github.event.client_payload.version }}"
+          sed -i "s/mlflow_version = \".*\"/mlflow_version = \"${{ github.event.client_payload.version }}\"/" terraform/terraform.tfvars
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "mlflow-bot"
+          git config --global user.email "mlflow-bot@example.com"
+          git checkout -b bump-mlflow-${{ github.event.client_payload.version }}
+          git commit -am "chore: bump mlflow_version to ${{ github.event.client_payload.version }}"
+          git push origin bump-mlflow-${{ github.event.client_payload.version }}
+
+      - name: Open Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump mlflow_version to ${{ github.event.client_payload.version }}"
+          branch: bump-mlflow-${{ github.event.client_payload.version }}
+          title: "chore: bump mlflow_version to ${{ github.event.client_payload.version }}"
+          body: |
+            This PR updates Terraform to use MLflow version `${{ github.event.client_payload.version }}`.
+
+  plan:
+    if: github.event_name == 'repository_dispatch'
+    runs-on: ubuntu-latest
+    needs: bump
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: bump-mlflow-${{ github.event.client_payload.version }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
+
+      - name: Terraform Plan
+        id: tfplan
+        run: terraform -chdir=terraform plan -no-color | tee terraform/plan.txt
+
+      - name: Upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tf-plan
+          path: terraform/plan.txt
+
+      - name: Comment plan on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          header: terraform-plan
+          path: terraform/plan.txt
+
+  apply:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
+
+      - name: Terraform Apply
+        id: apply
+        run: terraform -chdir=terraform apply -auto-approve
+
+      # ✅ Success notification
+      - name: Slack success
+        if: success()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: C01234567
+          slack-message: |
+            ✅ MLflow deployed successfully!
+            Version: *$(grep 'mlflow_version' terraform/terraform.tfvars | cut -d '"' -f2)*
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Teams success
+        if: success()
+        run: |
+          version=$(grep 'mlflow_version' terraform/terraform.tfvars | cut -d '"' -f2)
+          payload=$(jq -n --arg text "✅ MLflow $version deployed successfully via Terraform apply." '{text: $text}')
+          curl -H "Content-Type: application/json" -d "$payload" ${{ secrets.TEAMS_WEBHOOK_URL }}
+
+      # ❌ Failure notification
+      - name: Slack failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: C01234567
+          slack-message: |
+            ❌ MLflow deployment FAILED!
+            Rolling back to previous version...
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Teams failure
+        if: failure()
+        run: |
+          payload=$(jq -n --arg text "❌ MLflow deployment FAILED. Rolling back to previous version..." '{text: $text}')
+          curl -H "Content-Type: application/json" -d "$payload" ${{ secrets.TEAMS_WEBHOOK_URL }}
+
+      # 🔄 Auto-rollback PR
+      - name: Rollback MLflow version
+        if: failure()
+        run: |
+          git fetch origin main
+          last_good=$(git rev-parse HEAD^)
+          git checkout $last_good terraform/terraform.tfvars
+
+          prev_version=$(grep 'mlflow_version' terraform/terraform.tfvars | cut -d '"' -f2)
+          echo "Rolling back to MLflow version $prev_version"
+
+          git config --global user.name "mlflow-bot"
+          git config --global user.email "mlflow-bot@example.com"
+          git checkout -b rollback-mlflow-$prev_version
+          git commit -am "revert: rollback mlflow_version to $prev_version after failed apply"
+          git push origin rollback-mlflow-$prev_version
+
+      - name: Open Rollback PR
+        if: failure()
+        id: rollback_pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "revert: rollback mlflow_version"
+          branch: rollback-mlflow
+          title: "🚨 Rollback: revert mlflow_version after failed apply"
+          body: |
+            Terraform apply failed for the new MLflow version.
+            This PR reverts `mlflow_version` back to the last known good value.
+          labels: rollback
+
+      - name: Auto-merge rollback PR
+        if: failure()
+        run: |
+          gh pr merge ${{ steps.rollback_pr.outputs.pull-request-number }} --squash --admin --delete-branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 🔔 Rollback success notification
+      - name: Slack rollback success
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: C01234567
+          slack-message: |
+            🔄 Rollback completed automatically.
+            Restored MLflow version: *$(grep 'mlflow_version' terraform/terraform.tfvars | cut -d '"' -f2)*
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Teams rollback success
+        if: failure()
+        run: |
+          version=$(grep 'mlflow_version' terraform/terraform.tfvars | cut -d '"' -f2)
+          payload=$(jq -n --arg text "🔄 Rollback completed automatically. Restored MLflow version: $version" '{text: $text}')
+          curl -H "Content-Type: application/json" -d "$payload" ${{ secrets.TEAMS_WEBHOOK_URL }}

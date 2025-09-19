@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/helm"
       version = ">= 2.10.0"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = ">= 2.32.0"
+    }
   }
 }
 
@@ -91,29 +95,12 @@ module "eks" {
 }
 
 # ----------------------------
-# Data sources for Helm provider
+# Kubernetes Provider (EKS)
 # ----------------------------
-data "aws_eks_cluster" "this" {
-  name = module.eks.cluster_name
-}
-
-data "aws_eks_cluster_auth" "this" {
-  name = module.eks.cluster_name
-}
-
-# ----------------------------
-# Kubernetes Provider (aliased as eks)
-# ----------------------------
-# provider "kubernetes" {
-#   alias                  = "eks"
-#   host                   = data.aws_eks_cluster.this.endpoint
-#   cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
-#   token                  = data.aws_eks_cluster_auth.this.token
-# }
 provider "kubernetes" {
-  host                   = data.aws_eks_cluster.this.endpoint
-  cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
-  token                  = data.aws_eks_cluster_auth.this.token
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+  token                  = module.eks.cluster_token
 }
 
 # ----------------------------
@@ -121,9 +108,9 @@ provider "kubernetes" {
 # ----------------------------
 provider "helm" {
   kubernetes = {
-    host                   = data.aws_eks_cluster.this.endpoint
-    cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
-    token                  = data.aws_eks_cluster_auth.this.token
+    host                   = module.eks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+    token                  = module.eks.cluster_token
   }
 }
 

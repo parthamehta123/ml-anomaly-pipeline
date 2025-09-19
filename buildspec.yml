@@ -1,0 +1,10 @@
+version: 0.2
+phases:
+  build:
+    commands:
+      - echo Logging in to ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - echo Pulling MLflow image...
+      - docker pull mlflow/mlflow:2.0.1
+      - docker tag mlflow/mlflow:2.0.1 $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/mlflow:2.0.1
+      - docker push $ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/mlflow:2.0.1

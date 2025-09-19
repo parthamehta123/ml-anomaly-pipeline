@@ -1,0 +1,85 @@
+name: Mirror MLflow to ECR
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::413117505590:role/github-actions-oidc-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ECR login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Fetch latest MLflow release
+        id: mlflow
+        run: |
+          latest=$(curl -s https://registry.hub.docker.com/v2/repositories/mlflow/mlflow/tags?page_size=1 \
+            | jq -r '.results[0].name')
+          echo "MLFLOW_VERSION=$latest" >> $GITHUB_ENV
+
+      - name: Mirror to ECR
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_URI="$ACCOUNT_ID.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/mlflow"
+          docker pull mlflow/mlflow:${{ env.MLFLOW_VERSION }}
+          docker tag mlflow/mlflow:${{ env.MLFLOW_VERSION }} $ECR_URI:${{ env.MLFLOW_VERSION }}
+          docker tag mlflow/mlflow:${{ env.MLFLOW_VERSION }} $ECR_URI:latest
+          docker push $ECR_URI:${{ env.MLFLOW_VERSION }}
+          docker push $ECR_URI:latest
+          echo "ECR_URI=$ECR_URI" >> $GITHUB_ENV
+
+      - name: Slack notification
+        id: slack
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: C01234567
+          slack-message: |
+            📦 MLflow mirrored to ECR
+            *Version:* ${{ env.MLFLOW_VERSION }}
+            *ECR URI:* ${{ env.ECR_URI }}:${{ env.MLFLOW_VERSION }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Slack thread with Terraform instructions
+        run: |
+          curl -X POST -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
+               -H 'Content-type: application/json' \
+               --data "{
+                 \"channel\": \"C01234567\",
+                 \"thread_ts\": \"${{ steps.slack.outputs.ts }}\",
+                 \"text\": \"🚀 Promote with: \n\`\`\`terraform apply -var=\\\"mlflow_version=${{ env.MLFLOW_VERSION }}\\\"\`\`\`\"
+               }" \
+               https://slack.com/api/chat.postMessage
+
+      - name: Teams notification
+        run: |
+          payload=$(jq -n \
+            --arg text "📦 MLflow image ${{ env.MLFLOW_VERSION }} mirrored to ECR: ${{ env.ECR_URI }}:${{ env.MLFLOW_VERSION }} 🚀 Promote with: terraform apply -var=\\\"mlflow_version=${{ env.MLFLOW_VERSION }}\\\"" \
+            '{text: $text}')
+          curl -H "Content-Type: application/json" -d "$payload" ${{ secrets.TEAMS_WEBHOOK_URL }}
+
+      - name: Trigger bump workflow
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: your-org/ml-anomaly-pipeline
+          event-type: bump-mlflow-version
+          client-payload: '{"version": "${{ env.MLFLOW_VERSION }}"}'

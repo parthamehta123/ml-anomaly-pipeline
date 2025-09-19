@@ -32,3 +32,9 @@ variable "ghcr_token" {
   description = "GitHub personal access token with read:packages"
   sensitive   = true
 }
+
+variable "mlflow_version" {
+  description = "MLflow version to deploy"
+  type        = string
+  default     = "2.0.1" # can override in tfvars or CLI
+}

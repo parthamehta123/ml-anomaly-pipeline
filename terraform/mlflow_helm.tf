@@ -29,10 +29,10 @@ resource "helm_release" "mlflow" {
         port: 5000
 
       image:
-        repository: ghcr.io/mlflow/mlflow
-        tag: v2.0.1
-        pullSecrets:
-          - name: ghcr-secret
+        repository: ${aws_ecr_repository.mlflow.repository_url}
+        tag: "${var.mlflow_version}"    # ✅ explicit version, not latest
+        pullPolicy: IfNotPresent        # safer, avoids unnecessary redeploys
+
 
       ingress:
         enabled: true
@@ -48,6 +48,6 @@ resource "helm_release" "mlflow" {
   depends_on = [
     module.eks,
     aws_s3_bucket.ml_bucket,
-    kubernetes_secret.ghcr
+    aws_ecr_repository.mlflow
   ]
 }
