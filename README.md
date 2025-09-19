@@ -1,5 +1,10 @@
 # ML Anomaly Detection Pipeline (End-to-End)
 
+![Build Status](https://img.shields.io/github/actions/workflow/status/parthamehta123/ml-anomaly-pipeline/ci.yml?branch=main)
+![Terraform](https://img.shields.io/badge/Terraform-AWS%20EKS-blueviolet?logo=terraform)
+![MLflow](https://img.shields.io/badge/MLflow-Latest%20Deployed-green?logo=mlflow)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 This repository implements a **production-ready MLOps pipeline** for anomaly detection and time-series forecasting of infrastructure metrics (CPU, memory, disk I/O, pod restarts, etc.) using **Prometheus, Kubernetes, Terraform, AWS, MLflow, and ArgoCD GitOps**.
 
 ---
@@ -41,6 +46,7 @@ This repository implements a **production-ready MLOps pipeline** for anomaly det
   - Champion/Challenger model evaluation
   - MLflow experiment tracking (metrics, params, artifacts)
   - Retraining orchestrated with AWS Step Functions
+  - **Auto-Rollback** on failed Terraform apply → previous `mlflow_version` restored automatically
 
 - **Infrastructure as Code**
   - Terraform provisions:
@@ -93,6 +99,12 @@ ml-anomaly-pipeline/
 │   ├── prometheus-app.yaml
 │   ├── grafana-app.yaml
 │   └── operator-app.yaml
+├── docs/
+│   ├── architecture.png
+│   ├── demo.gif
+│   ├── mlflow_pipeline_flowchart.png
+│   ├── mlflow_pipeline_flowchart.md
+│   └── mlflow_pipeline_flowchart.mmd
 ```
 
 ---
@@ -134,7 +146,12 @@ kubectl apply -f gitops/root-app.yaml -n argocd
 
 ## 🔄 CI/CD
 
-- GitHub Actions workflow builds Docker images, pushes to ECR, and ArgoCD syncs into EKS automatically.
+- GitHub Actions workflow:
+  - Mirrors MLflow images into ECR.
+  - Posts **Terraform upgrade instructions** to Slack/Teams.
+  - Auto-bumps `mlflow_version` in `terraform.tfvars` via PR when new versions are mirrored.
+  - Runs Terraform plan on PR, apply on merge.
+  - On **failure** → auto-rolls back to last good version and posts rollback notification.
 - Drift correction ensures infra + MLflow always matches Git.
 
 ---
@@ -159,24 +176,6 @@ kubectl apply -f gitops/root-app.yaml -n argocd
 
 ---
 
-## 📌 Tech Stack
-
-- **Infra:** AWS (EKS, S3, RDS, Step Functions, Lambda), Terraform, ArgoCD  
-- **ML:** Python, scikit-learn, statsmodels (ARIMA), MLflow  
-- **Serving:** FastAPI, Docker, Helm, Kubernetes  
-- **Monitoring:** Prometheus, Grafana, Alertmanager  
-
----
-
-## 👤 Author
-
-Designed for **CloudOps + AI Engineer interviews & real-world Ops use cases**.  
-Demonstrates anomaly detection, MLOps, IaC, GitOps, observability, and self-healing infra.
-
-
-
----
-
 ## 🖼️ Architecture Diagram
 
 ![Architecture](docs/architecture.png)
@@ -189,6 +188,31 @@ This diagram shows the full pipeline:
 - **Chaos Testing** → Chaos Mesh, AWS FIS, Locust
 - **Auto-Remediation** → K8s Operator, AWS Lambda, Step Functions
 
+---
+
+## 🔄 CI/CD + Rollback Flow (Mermaid)
+
+```mermaid
+flowchart LR
+    mirror[🔄 Mirror MLflow<br/>(DockerHub → ECR)]
+    notify[📢 Notify Slack/Teams<br/>+ Terraform instructions]
+    bump[🤖 Bump Workflow<br/>(Update terraform.tfvars,<br/>Open PR)]
+    plan[📝 Terraform Plan<br/>(Comment on PR)]
+    apply[🚀 Terraform Apply<br/>(on merge to main)]
+    success((✅ Success<br/>Slack + Teams Notify))
+    fail((❌ Failure<br/>Slack + Teams Alert))
+    rollback[🔄 Auto-Rollback PR<br/>+ Auto-Merge]
+    rollback_notify((📢 Rollback Success<br/>Slack + Teams Notify))
+
+    mirror --> notify
+    mirror --> bump
+    bump --> plan
+    plan --> apply
+    apply -->|success| success
+    apply -->|failure| fail
+    fail --> rollback
+    rollback --> rollback_notify
+```
 
 ---
 
@@ -196,5 +220,4 @@ This diagram shows the full pipeline:
 
 ![Chaos Demo](docs/demo.gif)
 
-*This demo shows a chaos experiment (pod kill) triggering anomalies → Grafana alert firing → auto-remediation kicking in.  
-Replace `docs/demo.gif` with your own recording.*
+*This demo shows a chaos experiment (pod kill) triggering anomalies → Grafana alert firing → auto-remediation + rollback kicking in.*
